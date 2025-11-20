@@ -1,0 +1,484 @@
+// This is your Prisma schema file
+// Remote Work Engine - Comprehensive Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================
+// USER & AUTH MODELS
+// =====================
+
+enum UserRole {
+  JOB_SEEKER
+  EMPLOYER
+  ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  PREMIUM
+  PRO
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  emailVerified DateTime?
+  password      String?
+  name          String?
+  role          UserRole @default(JOB_SEEKER)
+  tier          SubscriptionTier @default(FREE)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  profile       UserProfile?
+  employerProfile EmployerProfile?
+  accounts      Account[]
+  sessions      Session[]
+  savedJobs     SavedJob[]
+  applications  Application[]
+  preferences   UserPreference[]
+  keywords      UserKeyword[]
+  searches      SavedSearch[]
+  reports       ReportSubscription[]
+  messages      Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// =====================
+// USER PROFILE MODELS
+// =====================
+
+model UserProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  headline        String?
+  bio             String?
+  location        String?
+  timezone        String?
+  phone           String?
+  linkedinUrl     String?
+  githubUrl       String?
+  portfolioUrl    String?
+  websiteUrl      String?
+  videoIntroUrl   String?
+  resumeUrl       String?
+
+  // Preferences
+  minSalary       Int?
+  maxSalary       Int?
+  currency        String?   @default("USD")
+  employmentTypes String[]
+  desiredTitles   String[]
+  targetIndustries String[]
+  preferredSchedule String?
+  willingToTravel Boolean   @default(false)
+  travelFrequency String?
+  languagesSpoken String[]
+
+  // Availability
+  availableFrom   DateTime?
+  activelyLooking Boolean   @default(true)
+  openToWork      Boolean   @default(true)
+
+  // Privacy
+  profilePublic   Boolean   @default(true)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experiences     Experience[]
+  education       Education[]
+  skills          Skill[]
+  certifications  Certification[]
+
+  @@map("user_profiles")
+}
+
+model Experience {
+  id          String    @id @default(cuid())
+  profileId   String
+  title       String
+  company     String
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  current     Boolean   @default(false)
+  description String?
+
+  profile     UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("experiences")
+}
+
+model Education {
+  id          String    @id @default(cuid())
+  profileId   String
+  degree      String
+  institution String
+  field       String?
+  startDate   DateTime?
+  endDate     DateTime?
+  current     Boolean   @default(false)
+
+  profile     UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("education")
+}
+
+model Skill {
+  id          String @id @default(cuid())
+  profileId   String
+  name        String
+  level       String?
+
+  profile     UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("skills")
+}
+
+model Certification {
+  id          String    @id @default(cuid())
+  profileId   String
+  name        String
+  issuer      String
+  issueDate   DateTime?
+  expiryDate  DateTime?
+  credentialUrl String?
+
+  profile     UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("certifications")
+}
+
+
+// =====================
+// PREFERENCE & KEYWORD MODELS
+// =====================
+
+enum KeywordType {
+  TITLE
+  COMPANY
+  SKILL
+  INDUSTRY
+  BENEFIT
+  CULTURE
+}
+
+model UserKeyword {
+  id        String      @id @default(cuid())
+  userId    String
+  keyword   String
+  type      KeywordType
+  sentiment Int
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_keywords")
+}
+
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("user_preferences")
+}
+
+// =====================
+// EMPLOYER MODELS
+// =====================
+
+model EmployerProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  companyName     String
+  description     String?
+  website         String?
+  logoUrl         String?
+  industry        String?
+  companySize     String?
+  location        String?
+  foundedYear     Int?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs            JobListing[]
+
+  @@map("employer_profiles")
+}
+
+// =====================
+// JOB LISTING MODELS
+// =====================
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum ExperienceLevel {
+  ENTRY
+  MID
+  SENIOR
+  DIRECTOR
+  EXECUTIVE
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  FILLED
+}
+
+model JobListing {
+  id              String          @id @default(cuid())
+  employerId      String?
+  externalId      String?
+
+  title           String
+  description     String
+  requirements    String?
+  responsibilities String?
+  benefits        String?
+
+  companyName     String
+  companyLogo     String?
+  location        String?
+
+  jobType         JobType
+  experienceLevel ExperienceLevel?
+  industry        String?
+
+  salaryMin       Int?
+  salaryMax       Int?
+  currency        String?         @default("USD")
+
+  applyUrl        String?
+  source          String?
+  status          JobStatus       @default(ACTIVE)
+
+  postedDate      DateTime        @default(now())
+  closingDate     DateTime?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  employer        EmployerProfile? @relation(fields: [employerId], references: [id], onDelete: SetNull)
+  savedBy         SavedJob[]
+  applications    Application[]
+
+  @@index([status, postedDate])
+  @@map("job_listings")
+}
+
+// =====================
+// INTERACTION MODELS
+// =====================
+
+model SavedJob {
+  id          String   @id @default(cuid())
+  userId      String
+  jobId       String
+  liked       Boolean  @default(false)
+  disliked    Boolean  @default(false)
+  saved       Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job         JobListing @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@map("saved_jobs")
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  VIEWED
+  INTERVIEWING
+  OFFERED
+  REJECTED
+  WITHDRAWN
+  ACCEPTED
+}
+
+enum ApplicationSource {
+  MANUAL
+  BULK
+  AUTO
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  userId          String
+  jobId           String
+
+  status          ApplicationStatus @default(SUBMITTED)
+  source          ApplicationSource @default(MANUAL)
+
+  coverLetter     String?
+  resumeUrl       String?
+
+  appliedAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job             JobListing        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@map("applications")
+}
+
+// =====================
+// SEARCH & REPORT MODELS
+// =====================
+
+model SavedSearch {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  filters     Json
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("saved_searches")
+}
+
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+}
+
+enum ReportChannel {
+  EMAIL
+  SMS
+  IN_APP
+}
+
+model ReportSubscription {
+  id          String          @id @default(cuid())
+  userId      String
+  type        String
+  searchId    String?
+  frequency   ReportFrequency @default(DAILY)
+  channels    ReportChannel[]
+  active      Boolean         @default(true)
+  lastSent    DateTime?
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("report_subscriptions")
+}
+
+// =====================
+// MESSAGING MODELS
+// =====================
+
+model Message {
+  id          String   @id @default(cuid())
+  senderId    String
+  receiverId  String
+  jobId       String?
+  subject     String?
+  content     String
+  read        Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  title       String
+  message     String
+  link        String?
+  read        Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// =====================
+// ANALYTICS & TRACKING
+// =====================
+
+model UserActivity {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  entityType  String?
+  entityId    String?
+  metadata    Json?
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("user_activities")
+}
